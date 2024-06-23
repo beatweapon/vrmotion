@@ -4,6 +4,7 @@
 	import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 	import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 	import { FilesetResolver, FaceLandmarker, type Classifications } from '@mediapipe/tasks-vision';
+	import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 	import '../global.css';
 
 	onMount(() => {
@@ -55,7 +56,8 @@
 				this.width = (this.height * 1280) / 720;
 				// Set up the Three.js scene, camera, and renderer
 				this.scene = new THREE.Scene();
-				this.camera = new THREE.PerspectiveCamera(60, this.width / this.height, 0.01, 5000);
+				this.camera = new THREE.PerspectiveCamera(35, this.width / this.height, 0.1, 2000);
+				this.camera.position.set(0.0, 1.4, -1.7);
 
 				this.renderer = new THREE.WebGLRenderer({ antialias: true });
 				this.renderer.setSize(this.width, this.height);
@@ -77,6 +79,11 @@
 				orbitTarget.z -= 5;
 				this.controls.target = orbitTarget;
 				this.controls.update();
+
+				// light
+				const light = new THREE.DirectionalLight(0xffffff);
+				light.position.set(1.0, 1.0, 1.0).normalize();
+				this.scene.add(light);
 
 				// Add a video background
 				const video = document.getElementById('video') as HTMLVideoElement;
@@ -137,10 +144,22 @@
 			root?: THREE.Bone;
 			morphTargetMeshes: THREE.Mesh[] = [];
 			url: string;
+			/* THREEJS WORLD SETUP */
+			vrm: any;
+			// lookat target
+			lookAtTarget = new THREE.Object3D();
+
+			clock = new THREE.Clock();
 
 			constructor(url: string, scene: THREE.Scene) {
 				this.url = url;
 				this.scene = scene;
+
+				// Install GLTFLoader plugin
+				this.loader.register((parser) => {
+					return new VRMLoaderPlugin(parser);
+				});
+
 				this.loadModel(this.url);
 			}
 
@@ -157,9 +176,30 @@
 							this.morphTargetMeshes = [];
 						}
 						this.gltf = gltf;
-						console.log();
-						this.scene.add(gltf.scene);
-						this.init(gltf);
+
+						this.vrm = gltf.userData.vrm;
+						VRMUtils.removeUnnecessaryVertices(gltf.scene);
+						VRMUtils.removeUnnecessaryJoints(gltf.scene);
+
+						// add the loaded vrm to the scene
+						this.scene.add(this.vrm.scene);
+
+						this.scene.add(this.lookAtTarget);
+						this.lookAtTarget.position.z = 1;
+
+						this.vrm.lookAt.target = this.lookAtTarget;
+
+						// deal with vrm features
+						console.log(this.vrm);
+
+						// this.scene.add(gltf.scene);
+						this.init(this.vrm);
+
+						const gridHelper = new THREE.GridHelper(10, 10);
+						this.scene.add(gridHelper);
+
+						const axesHelper = new THREE.AxesHelper(5);
+						this.scene.add(axesHelper);
 					},
 
 					// Called while loading is progressing
@@ -197,12 +237,29 @@
 			}
 
 			updateBlendshapes(blendshapes: Map<string, number>) {
+				if (!this.vrm) {
+					return;
+				}
+				const deltaTime = this.clock.getDelta();
+				const s = Math.sin(Math.PI * this.clock.elapsedTime);
+
 				for (const mesh of this.morphTargetMeshes) {
 					if (!mesh.morphTargetDictionary || !mesh.morphTargetInfluences) {
 						// console.warn(`Mesh ${mesh.name} does not have morphable targets`);
 						continue;
 					}
+
 					for (const [name, value] of blendshapes) {
+						if (name === 'eyeBlinkLeft') {
+							const blink = value < 0.5 ? 0 : value;
+							this.vrm.expressionManager.setValue('blinkLeft', blink);
+						}
+
+						if (name === 'eyeBlinkRight') {
+							const blink = value < 0.5 ? 0 : value;
+							this.vrm.expressionManager.setValue('blinkRight', blink);
+						}
+
 						if (!Object.keys(mesh.morphTargetDictionary).includes(name)) {
 							// console.warn(`Model morphable target ${name} not found`);
 							continue;
@@ -211,7 +268,24 @@
 						const idx = mesh.morphTargetDictionary[name];
 						mesh.morphTargetInfluences[idx] = value;
 					}
+
+					if (blendshapes) {
+						const rightEyeLookRight =
+							(blendshapes.get('eyeLookOutRight') || 0) - (blendshapes.get('eyeLookInRight') || 0);
+						const leftEyeLookRight =
+							(blendshapes.get('eyeLookInLeft') || 0) - (blendshapes.get('eyeLookOutLeft') || 0);
+
+						const rightEyeLookUp =
+							(blendshapes.get('eyeLookUpRight') || 0) - (blendshapes.get('eyeLookDownRight') || 0);
+						const leftEyeLookUp =
+							(blendshapes.get('eyeLookUpLeft') || 0) - (blendshapes.get('eyeLookDownLeft') || 0);
+
+						this.lookAtTarget.position.x = -(10 * (rightEyeLookRight + leftEyeLookRight)) / 2;
+						this.lookAtTarget.position.y = 1.7 + (10 * (rightEyeLookUp + leftEyeLookUp)) / 2;
+					}
 				}
+
+				this.vrm.update(deltaTime);
 			}
 
 			/**
@@ -256,7 +330,7 @@
 		let video: HTMLVideoElement;
 
 		const scene = new BasicScene();
-		const avatar = new Avatar('https://assets.codepen.io/9177687/raccoon_head.glb', scene.scene);
+		const avatar = new Avatar('/models/sample2.vrm', scene.scene);
 
 		function detectFaceLandmarks(time: DOMHighResTimeStamp): void {
 			if (!faceLandmarker) {
@@ -269,7 +343,34 @@
 			if (transformationMatrices && transformationMatrices.length > 0) {
 				let matrix = new THREE.Matrix4().fromArray(transformationMatrices[0].data);
 				// Example of applying matrix directly to the avatar
-				avatar.applyMatrix(matrix, { scale: 40 });
+				// avatar.applyMatrix(matrix, { scale: 40 });
+
+				const LEFT_EYE_INDEX = 33;
+				const RIGHT_EYE_INDEX = 263;
+				const NOSE_INDEX = 4;
+
+				// 左目と右目のランドマーク位置を取得
+				const leftEye = landmarks.faceLandmarks[0][LEFT_EYE_INDEX];
+				const rightEye = landmarks.faceLandmarks[0][RIGHT_EYE_INDEX];
+				const nose = landmarks.faceLandmarks[0][NOSE_INDEX];
+
+				// 顔の中心点を計算（左目と右目の中点）
+				const centerX = (leftEye.x + rightEye.x) / 2;
+				const centerY = (leftEye.y + rightEye.y) / 2;
+				const centerZ = (leftEye.z + rightEye.z) / 2;
+
+				// 顔の中心点から鼻先へのベクトルを計算
+				const vectorX = nose.x - centerX;
+				const vectorY = nose.y - centerY;
+				const vectorZ = nose.z - centerZ;
+
+				// 頭のY軸の回転角度（ヨー角）を計算
+				// この例では、Z軸方向に対するX軸方向の角度を計算します
+				const yawAngle = Math.atan2(vectorX, vectorZ);
+
+				if (avatar.vrm) {
+					avatar.vrm.humanoid.getNormalizedBoneNode('neck').rotation.y = -yawAngle + Math.PI;
+				}
 			}
 
 			// Apply Blendshapes
@@ -343,7 +444,7 @@
 		async function runDemo() {
 			await streamWebcamThroughFaceLandmarker();
 			const vision = await FilesetResolver.forVisionTasks(
-				'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.1.0-alpha-16/wasm'
+				'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
 			);
 			faceLandmarker = await FaceLandmarker.createFromModelPath(
 				vision,
@@ -368,3 +469,9 @@
 <div class="container">
 	<video autoplay playsinline id="video"><track kind="captions" /></video>
 </div>
+
+<style>
+	video {
+		display: none;
+	}
+</style>
