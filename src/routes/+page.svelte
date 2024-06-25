@@ -388,7 +388,7 @@
 			// Apply transformation
 			const transformationMatrices = landmarks.facialTransformationMatrixes;
 			if (transformationMatrices && transformationMatrices.length > 0) {
-				let matrix = new THREE.Matrix4().fromArray(transformationMatrices[0].data);
+				// let matrix = new THREE.Matrix4().fromArray(transformationMatrices[0].data);
 				// Example of applying matrix directly to the avatar
 				// avatar.applyMatrix(matrix, { scale: 40 });
 
@@ -412,11 +412,34 @@
 				const vectorZ = nose.z - centerZ;
 
 				// 頭のY軸の回転角度（ヨー角）を計算
-				// この例では、Z軸方向に対するX軸方向の角度を計算します
 				const yawAngle = Math.atan2(vectorX, vectorZ);
 
+				// 頭のX軸の回転角度（ピッチ角）を計算
+				const pitchAngle = Math.atan2(vectorY, vectorZ);
+
+				// 頭のZ軸の回転角度（ロール角）を計算
+				const rollAngle = Math.atan2(leftEye.y - rightEye.y, leftEye.x - rightEye.x);
+
 				if (avatar.vrm) {
-					avatar.vrm.humanoid.getNormalizedBoneNode('neck').rotation.y = -yawAngle + Math.PI;
+					const neckBone = avatar.vrm.humanoid.getNormalizedBoneNode('neck');
+
+					// Three.jsのEulerオブジェクトを使用して回転を設定
+					neckBone.rotation.set(
+						-pitchAngle + Math.PI / 1.25,
+						yawAngle + Math.PI,
+						rollAngle + Math.PI,
+						'XYZ'
+					);
+
+					// neckBone.rotation.set(-pitchAngle * 0.5, yawAngle * 0.5, rollAngle * 0.5, 'XYZ');
+
+					// const chestBone = avatar.vrm.humanoid.getNormalizedBoneNode('spine');
+					// chestBone.rotation.set(
+					// 	-pitchAngle + Math.PI / 1.25,
+					// 	yawAngle + Math.PI,
+					// 	rollAngle + Math.PI,
+					// 	'XYZ'
+					// );
 				}
 			}
 
