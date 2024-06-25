@@ -4,39 +4,39 @@
 	import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 	import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 	import { FilesetResolver, FaceLandmarker, type Classifications } from '@mediapipe/tasks-vision';
-	import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+	import { VRMLoaderPlugin, VRMUtils, type VRM } from '@pixiv/three-vrm';
 	import '../global.css';
 
 	onMount(() => {
-		/**
-		 * Returns the world-space dimensions of the viewport at `depth` units away from
-		 * the camera.
-		 */
-		function getViewportSizeAtDepth(camera: THREE.PerspectiveCamera, depth: number): THREE.Vector2 {
-			const viewportHeightAtDepth =
-				2 * depth * Math.tan(THREE.MathUtils.degToRad(0.5 * camera.fov));
-			const viewportWidthAtDepth = viewportHeightAtDepth * camera.aspect;
-			return new THREE.Vector2(viewportWidthAtDepth, viewportHeightAtDepth);
-		}
+		// /**
+		//  * Returns the world-space dimensions of the viewport at `depth` units away from
+		//  * the camera.
+		//  */
+		// function getViewportSizeAtDepth(camera: THREE.PerspectiveCamera, depth: number): THREE.Vector2 {
+		// 	const viewportHeightAtDepth =
+		// 		2 * depth * Math.tan(THREE.MathUtils.degToRad(0.5 * camera.fov));
+		// 	const viewportWidthAtDepth = viewportHeightAtDepth * camera.aspect;
+		// 	return new THREE.Vector2(viewportWidthAtDepth, viewportHeightAtDepth);
+		// }
 
-		/**
-		 * Creates a `THREE.Mesh` which fully covers the `camera` viewport, is `depth`
-		 * units away from the camera and uses `material`.
-		 */
-		function createCameraPlaneMesh(
-			camera: THREE.PerspectiveCamera,
-			depth: number,
-			material: THREE.Material
-		): THREE.Mesh {
-			if (camera.near > depth || depth > camera.far) {
-				console.warn('Camera plane geometry will be clipped by the `camera`!');
-			}
-			const viewportSize = getViewportSizeAtDepth(camera, depth);
-			const cameraPlaneGeometry = new THREE.PlaneGeometry(viewportSize.width, viewportSize.height);
-			cameraPlaneGeometry.translate(0, 0, -depth);
+		// /**
+		//  * Creates a `THREE.Mesh` which fully covers the `camera` viewport, is `depth`
+		//  * units away from the camera and uses `material`.
+		//  */
+		// function createCameraPlaneMesh(
+		// 	camera: THREE.PerspectiveCamera,
+		// 	depth: number,
+		// 	material: THREE.Material
+		// ): THREE.Mesh {
+		// 	if (camera.near > depth || depth > camera.far) {
+		// 		console.warn('Camera plane geometry will be clipped by the `camera`!');
+		// 	}
+		// 	const viewportSize = getViewportSizeAtDepth(camera, depth);
+		// 	const cameraPlaneGeometry = new THREE.PlaneGeometry(viewportSize.width, viewportSize.height);
+		// 	cameraPlaneGeometry.translate(0, 0, -depth);
 
-			return new THREE.Mesh(cameraPlaneGeometry, material);
-		}
+		// 	return new THREE.Mesh(cameraPlaneGeometry, material);
+		// }
 
 		type RenderCallback = (delta: number) => void;
 
@@ -56,24 +56,25 @@
 				this.width = (this.height * 1280) / 720;
 				// Set up the Three.js scene, camera, and renderer
 				this.scene = new THREE.Scene();
+				this.scene.background = new THREE.Color(0xff00ff);
 				this.camera = new THREE.PerspectiveCamera(35, this.width / this.height, 0.1, 2000);
-				this.camera.position.set(0.0, 1.4, -1.7);
+				this.camera.position.set(0.0, 1.4, 1.7);
 
 				this.renderer = new THREE.WebGLRenderer({ antialias: true });
 				this.renderer.setSize(this.width, this.height);
-				THREE.ColorManagement.enabled = true;
-				this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+				// THREE.ColorManagement.enabled = true;
+				// this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 				document.body.appendChild(this.renderer.domElement);
 
 				// Set up the basic lighting for the scene
-				const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-				this.scene.add(ambientLight);
-				const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
-				directionalLight.position.set(0, 1, 0);
-				this.scene.add(directionalLight);
+				// const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+				// this.scene.add(ambientLight);
+				// const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+				// directionalLight.position.set(0, 1, 0);
+				// this.scene.add(directionalLight);
 
 				// Set up the camera position and controls
-				this.camera.position.z = 0;
+				// this.camera.position.z = 0;
 				this.controls = new OrbitControls(this.camera, this.renderer.domElement);
 				let orbitTarget = this.camera.position.clone();
 				orbitTarget.z -= 5;
@@ -81,24 +82,23 @@
 				this.controls.update();
 
 				// light
-				const light = new THREE.DirectionalLight(0xffffff);
-				light.position.set(1.0, 1.0, 1.0).normalize();
+				const light = new THREE.AmbientLight(0xffffff, Math.PI);
 				this.scene.add(light);
 
 				// Add a video background
-				const video = document.getElementById('video') as HTMLVideoElement;
-				const inputFrameTexture = new THREE.VideoTexture(video);
-				if (!inputFrameTexture) {
-					throw new Error("Failed to get the 'input_frame' texture!");
-				}
-				inputFrameTexture.colorSpace = THREE.SRGBColorSpace;
-				const inputFramesDepth = 500;
-				const inputFramesPlane = createCameraPlaneMesh(
-					this.camera,
-					inputFramesDepth,
-					new THREE.MeshBasicMaterial({ map: inputFrameTexture })
-				);
-				this.scene.add(inputFramesPlane);
+				// const video = document.getElementById('video') as HTMLVideoElement;
+				// const inputFrameTexture = new THREE.VideoTexture(video);
+				// if (!inputFrameTexture) {
+				// 	throw new Error("Failed to get the 'input_frame' texture!");
+				// }
+				// inputFrameTexture.colorSpace = THREE.SRGBColorSpace;
+				// const inputFramesDepth = 500;
+				// const inputFramesPlane = createCameraPlaneMesh(
+				// 	this.camera,
+				// 	inputFramesDepth,
+				// 	new THREE.MeshBasicMaterial({ map: inputFrameTexture })
+				// );
+				// this.scene.add(inputFramesPlane);
 
 				// Render the scene
 				this.render();
@@ -145,7 +145,7 @@
 			morphTargetMeshes: THREE.Mesh[] = [];
 			url: string;
 			/* THREEJS WORLD SETUP */
-			vrm: any;
+			vrm?: VRM;
 			// lookat target
 			lookAtTarget = new THREE.Object3D();
 
@@ -181,11 +181,14 @@
 						VRMUtils.removeUnnecessaryVertices(gltf.scene);
 						VRMUtils.removeUnnecessaryJoints(gltf.scene);
 
+						this.adjustArmsToAPose(this.vrm);
+						this.vrm.update(0);
+
 						// add the loaded vrm to the scene
 						this.scene.add(this.vrm.scene);
 
 						this.scene.add(this.lookAtTarget);
-						this.lookAtTarget.position.z = 1;
+						this.lookAtTarget.position.z = 10;
 
 						this.vrm.lookAt.target = this.lookAtTarget;
 
@@ -195,11 +198,11 @@
 						// this.scene.add(gltf.scene);
 						this.init(this.vrm);
 
-						const gridHelper = new THREE.GridHelper(10, 10);
-						this.scene.add(gridHelper);
+						// const gridHelper = new THREE.GridHelper(10, 10);
+						// this.scene.add(gridHelper);
 
-						const axesHelper = new THREE.AxesHelper(5);
-						this.scene.add(axesHelper);
+						// const axesHelper = new THREE.AxesHelper(5);
+						// this.scene.add(axesHelper);
 					},
 
 					// Called while loading is progressing
@@ -210,13 +213,25 @@
 				);
 			}
 
-			init(gltf: GLTF) {
+			// Adjust arms to A-pose function
+			adjustArmsToAPose(vrm: VRM) {
+				const leftUpperArm = vrm.humanoid.getNormalizedBoneNode('leftUpperArm');
+				const rightUpperArm = vrm.humanoid.getNormalizedBoneNode('rightUpperArm');
+				if (leftUpperArm) {
+					leftUpperArm.rotation.z = -Math.PI / 2.5; // Rotate left arm down
+				}
+				if (rightUpperArm) {
+					rightUpperArm.rotation.z = Math.PI / 2.5; // Rotate right arm down
+				}
+			}
+
+			init(gltf: VRM) {
 				gltf.scene.traverse((object) => {
 					// Register first bone found as the root
-					if ((object as THREE.Bone).isBone && !this.root) {
-						this.root = object as THREE.Bone;
-						console.log(object);
-					}
+					// if ((object as THREE.Bone).isBone && !this.root) {
+					// 	this.root = object as THREE.Bone;
+					// 	console.log(object);
+					// }
 					// Return early if no mesh is found.
 					if (!(object as THREE.Mesh).isMesh) {
 						// console.warn(`No mesh found`);
@@ -241,7 +256,6 @@
 					return;
 				}
 				const deltaTime = this.clock.getDelta();
-				const s = Math.sin(Math.PI * this.clock.elapsedTime);
 
 				for (const mesh of this.morphTargetMeshes) {
 					if (!mesh.morphTargetDictionary || !mesh.morphTargetInfluences) {
@@ -249,15 +263,48 @@
 						continue;
 					}
 
+					// const mouthSmileRight = blendshapes.get('mouthSmileRight');
+					// const mouthSmileLeft = blendshapes.get('mouthSmileLeft');
+					// this.vrm.expressionManager.setValue('happy', mouthSmileRight + mouthSmileLeft);
+
 					for (const [name, value] of blendshapes) {
 						if (name === 'eyeBlinkLeft') {
-							const blink = value < 0.5 ? 0 : value;
+							const blink = (value - 0.5) * 2;
 							this.vrm.expressionManager.setValue('blinkLeft', blink);
+							this.vrm.expressionManager.setValue('blinkRight', blink);
 						}
 
-						if (name === 'eyeBlinkRight') {
-							const blink = value < 0.5 ? 0 : value;
-							this.vrm.expressionManager.setValue('blinkRight', blink);
+						// if (name === 'eyeBlinkRight') {
+						// 	const blink = value < 0.8 ? 0 : value;
+						// 	this.vrm.expressionManager.setValue('blinkRight', blink);
+						// }
+
+						if (name === 'jawOpen') {
+							const jawOpen = value * 1.8;
+							if (jawOpen > 0.5) {
+								this.vrm.expressionManager.setValue('ee', 0);
+								this.vrm.expressionManager.setValue('aa', jawOpen);
+							} else {
+								this.vrm.expressionManager.setValue('aa', 0);
+								this.vrm.expressionManager.setValue('ee', jawOpen);
+							}
+						}
+
+						if (name === 'mouthPucker') {
+							const ou = (value - 0.5) * 2;
+							this.vrm.expressionManager.setValue('ou', ou);
+						}
+
+						if (name === 'mouthFunnel') {
+							this.vrm.expressionManager.setValue('oh', value);
+						}
+
+						if (name === 'browInnerUp') {
+							if (value > 0.7) {
+								this.vrm.expressionManager.setValue('surprised', value);
+							} else {
+								this.vrm.expressionManager.setValue('surprised', 0);
+							}
 						}
 
 						if (!Object.keys(mesh.morphTargetDictionary).includes(name)) {
@@ -471,7 +518,4 @@
 </div>
 
 <style>
-	video {
-		display: none;
-	}
 </style>
