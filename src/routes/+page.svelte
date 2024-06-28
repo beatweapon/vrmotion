@@ -7,6 +7,10 @@
 	import { VRMLoaderPlugin, VRMUtils, type VRM } from '@pixiv/three-vrm';
 	import '../global.css';
 
+	let roll = 0;
+	let yaw = 0;
+	let pitch = 0;
+
 	onMount(() => {
 		// /**
 		//  * Returns the world-space dimensions of the viewport at `depth` units away from
@@ -58,7 +62,7 @@
 				this.scene = new THREE.Scene();
 				this.scene.background = new THREE.Color(0xff00ff);
 				this.camera = new THREE.PerspectiveCamera(35, this.width / this.height, 0.1, 2000);
-				this.camera.position.set(0.0, 1.4, 1.7);
+				this.camera.position.set(0.0, 1.35, 0.7);
 
 				this.renderer = new THREE.WebGLRenderer({ antialias: true });
 				this.renderer.setSize(this.width, this.height);
@@ -263,10 +267,6 @@
 						continue;
 					}
 
-					// const mouthSmileRight = blendshapes.get('mouthSmileRight');
-					// const mouthSmileLeft = blendshapes.get('mouthSmileLeft');
-					// this.vrm.expressionManager.setValue('happy', mouthSmileRight + mouthSmileLeft);
-
 					for (const [name, value] of blendshapes) {
 						if (name === 'eyeBlinkLeft') {
 							const blink = (value - 0.5) * 2;
@@ -314,6 +314,17 @@
 
 						const idx = mesh.morphTargetDictionary[name];
 						mesh.morphTargetInfluences[idx] = value;
+					}
+
+					const mouthSmileRight = blendshapes.get('mouthSmileRight');
+					const mouthSmileLeft = blendshapes.get('mouthSmileLeft');
+					if ((mouthSmileRight || 0) + (mouthSmileLeft || 0) > 0.5) {
+						this.vrm.expressionManager.setValue('blinkLeft', 0);
+						this.vrm.expressionManager.setValue('blinkRight', 0);
+						this.vrm.expressionManager.setValue('happy', mouthSmileRight + mouthSmileLeft);
+						this.vrm.expressionManager.setValue('surprised', 0);
+					} else {
+						this.vrm.expressionManager.setValue('happy', 0);
 					}
 
 					if (blendshapes) {
@@ -388,7 +399,18 @@
 			// Apply transformation
 			const transformationMatrices = landmarks.facialTransformationMatrixes;
 			if (transformationMatrices && transformationMatrices.length > 0) {
-				// let matrix = new THREE.Matrix4().fromArray(transformationMatrices[0].data);
+				const matrix = new THREE.Matrix4().fromArray(transformationMatrices[0].data);
+				const originalQuaternion = new THREE.Quaternion().setFromRotationMatrix(matrix);
+				const reflectQuaternion = new THREE.Quaternion(
+					originalQuaternion.x,
+					originalQuaternion.y * 0.5,
+					-originalQuaternion.z,
+					originalQuaternion.w
+				);
+
+				// const halfQuaternion = new THREE.Quaternion();
+				// halfQuaternion.copy(originalQuaternion);
+				// halfQuaternion.angle *= 0.5; // 角度を半分にする
 				// Example of applying matrix directly to the avatar
 				// avatar.applyMatrix(matrix, { scale: 40 });
 
@@ -407,29 +429,87 @@
 				const centerZ = (leftEye.z + rightEye.z) / 2;
 
 				// 顔の中心点から鼻先へのベクトルを計算
-				const vectorX = nose.x - centerX;
-				const vectorY = nose.y - centerY;
-				const vectorZ = nose.z - centerZ;
+				const vectorX = centerX - nose.x;
+				const vectorY = centerY - nose.y;
+				const vectorZ = centerZ - nose.z;
 
 				// 頭のY軸の回転角度（ヨー角）を計算
-				const yawAngle = Math.atan2(vectorX, vectorZ);
+				yaw = Math.atan2(vectorX, vectorZ);
 
 				// 頭のX軸の回転角度（ピッチ角）を計算
-				const pitchAngle = Math.atan2(vectorY, vectorZ);
+				pitch = Math.atan2(vectorY, vectorZ);
 
 				// 頭のZ軸の回転角度（ロール角）を計算
-				const rollAngle = Math.atan2(leftEye.y - rightEye.y, leftEye.x - rightEye.x);
+				roll = Math.atan2(rightEye.y - leftEye.y, rightEye.x - leftEye.x);
 
 				if (avatar.vrm) {
+					const headBone = avatar.vrm.humanoid.getNormalizedBoneNode('head');
 					const neckBone = avatar.vrm.humanoid.getNormalizedBoneNode('neck');
+					const spineBone = avatar.vrm.humanoid.getNormalizedBoneNode('spine');
 
-					// Three.jsのEulerオブジェクトを使用して回転を設定
-					neckBone.rotation.set(
-						-pitchAngle + Math.PI / 1.25,
-						yawAngle + Math.PI,
-						rollAngle + Math.PI,
-						'XYZ'
-					);
+					spineBone.quaternion.slerp(adjustQuaternionAngleRatio(reflectQuaternion, 0.6), 1);
+					neckBone.quaternion
+						.copy(spineBone.quaternion)
+						.multiply(adjustQuaternionAngleRatio(reflectQuaternion, 0.2));
+					headBone.quaternion
+						.copy(neckBone.quaternion)
+						.multiply(adjustQuaternionAngleRatio(reflectQuaternion, 0));
+
+					// // Spine rotation
+					// const spineRotation = new THREE.Quaternion().setFromEuler(
+					// 	new THREE.Euler(pitch, yaw * 0.5, roll * 0.5, 'YXZ')
+					// );
+					// spineBone.quaternion.slerp(spineRotation, 0.1);
+
+					// // Neck rotation relative to spine
+					// const neckRotation = new THREE.Quaternion().setFromEuler(
+					// 	new THREE.Euler(0, yaw * 0.5, roll * 0.5, 'YXZ')
+					// );
+					// neckBone.quaternion.copy(spineBone.quaternion).multiply(neckRotation);
+
+					// // Head rotation relative to neck
+					// const headRotation = new THREE.Quaternion().setFromEuler(
+					// 	new THREE.Euler(pitch * 0.2, -yaw * 0.2, -roll * 0.2, 'YXZ')
+					// );
+					// headBone.quaternion.copy(neckBone.quaternion).multiply(headRotation);
+
+					// const headRotation = new THREE.Quaternion().setFromEuler(
+					// 	new THREE.Euler(pitch * 0.5, -yaw * 0.5, -roll * 0.5, 'YXZ')
+					// );
+					// const neckRotation = new THREE.Quaternion().setFromEuler(
+					// 	new THREE.Euler(pitch * 0.3, -yaw * 0.3, -roll * 0.3, 'YXZ')
+					// );
+					// const spineRotation = new THREE.Quaternion().setFromEuler(
+					// 	new THREE.Euler(pitch * 0.2, -yaw * 0.2, -roll * 0.2, 'YXZ')
+					// );
+
+					// headBone.quaternion.slerp(headRotation, 0.1);
+					// neckBone.quaternion.slerp(neckRotation, 0.1);
+					// spineBone.quaternion.slerp(spineRotation, 0.1);
+
+					// const headPitch = pitch * 0;
+					// const headYaw = -yaw * 0;
+					// const headRoll = roll * 0.5;
+
+					// const neckPitch = pitch * 0.5 * 0;
+					// const neckYaw = -yaw * 0.5 * 0;
+					// const neckRoll = -roll * 0.5;
+
+					// const spinePitch = pitch * 0.2 * 0;
+					// const spineYaw = -yaw * 0.2 * 0;
+					// const spineRoll = -roll * 0.2;
+
+					// headBone.rotation.set(headPitch, headYaw, headRoll, 'YXZ');
+					// neckBone.rotation.set(neckPitch, neckYaw, neckRoll, 'YXZ');
+					// spineBone.rotation.set(spinePitch, spineYaw, spineRoll, 'YXZ');
+
+					// // Three.jsのEulerオブジェクトを使用して回転を設定
+					// neckBone.rotation.set(
+					// 	-pitchAngle + Math.PI / 1.25,
+					// 	yawAngle + Math.PI,
+					// 	rollAngle + Math.PI,
+					// 	'XYZ'
+					// );
 
 					// neckBone.rotation.set(-pitchAngle * 0.5, yawAngle * 0.5, rollAngle * 0.5, 'XYZ');
 
@@ -449,6 +529,15 @@
 				const coefsMap = retarget(blendshapes);
 				avatar.updateBlendshapes(coefsMap);
 			}
+		}
+
+		function adjustQuaternionAngleRatio(quaternion: THREE.Quaternion, ratio: number) {
+			return new THREE.Quaternion(
+				quaternion.x * ratio,
+				quaternion.y * ratio,
+				quaternion.z * ratio,
+				quaternion.w
+			);
 		}
 
 		function retarget(blendshapes: Classifications[]) {
