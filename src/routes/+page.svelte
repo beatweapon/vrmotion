@@ -292,7 +292,13 @@
 
 						if (name === 'mouthPucker') {
 							const ou = (value - 0.5) * 2;
-							this.vrm.expressionManager.setValue('ou', ou);
+							if (ou > 0) {
+								this.vrm.expressionManager.setValue('ou', ou);
+								this.vrm.expressionManager.setValue('ee', 0);
+								this.vrm.expressionManager.setValue('aa', 0);
+							} else {
+								this.vrm.expressionManager.setValue('ou', 0);
+							}
 						}
 
 						if (name === 'mouthFunnel') {
@@ -338,7 +344,7 @@
 						const leftEyeLookUp =
 							(blendshapes.get('eyeLookUpLeft') || 0) - (blendshapes.get('eyeLookDownLeft') || 0);
 
-						this.lookAtTarget.position.x = -(10 * (rightEyeLookRight + leftEyeLookRight)) / 2;
+						this.lookAtTarget.position.x = (10 * (rightEyeLookRight + leftEyeLookRight)) / 2;
 						this.lookAtTarget.position.y = 1.7 + (10 * (rightEyeLookUp + leftEyeLookUp)) / 2;
 					}
 				}
@@ -401,16 +407,14 @@
 			if (transformationMatrices && transformationMatrices.length > 0) {
 				const matrix = new THREE.Matrix4().fromArray(transformationMatrices[0].data);
 				const originalQuaternion = new THREE.Quaternion().setFromRotationMatrix(matrix);
+
 				const reflectQuaternion = new THREE.Quaternion(
-					originalQuaternion.x,
-					originalQuaternion.y * 0.5,
+					originalQuaternion.x > 0 ? originalQuaternion.x : originalQuaternion.x * 0.3,
+					-originalQuaternion.y * 0.5,
 					-originalQuaternion.z,
 					originalQuaternion.w
 				);
 
-				// const halfQuaternion = new THREE.Quaternion();
-				// halfQuaternion.copy(originalQuaternion);
-				// halfQuaternion.angle *= 0.5; // 角度を半分にする
 				// Example of applying matrix directly to the avatar
 				// avatar.applyMatrix(matrix, { scale: 40 });
 
@@ -447,7 +451,7 @@
 					const neckBone = avatar.vrm.humanoid.getNormalizedBoneNode('neck');
 					const spineBone = avatar.vrm.humanoid.getNormalizedBoneNode('spine');
 
-					spineBone.quaternion.slerp(adjustQuaternionAngleRatio(reflectQuaternion, 0.6), 1);
+					spineBone.quaternion.slerp(adjustQuaternionAngleRatio(reflectQuaternion, 0.6), 0.3);
 					neckBone.quaternion
 						.copy(spineBone.quaternion)
 						.multiply(adjustQuaternionAngleRatio(reflectQuaternion, 0.2));
